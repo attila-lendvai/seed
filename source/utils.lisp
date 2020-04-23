@@ -1,4 +1,4 @@
-(in-package :seed)
+(in-package :seed/eval)
 
 ;;;
 ;;; from hu.dwim.util

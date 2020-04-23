@@ -1,4 +1,4 @@
-(in-package :seed)
+(in-package :seed/eval)
 
 (locally
     #+sbcl(declare (sb-ext:muffle-conditions sb-kernel:redefinition-warning))

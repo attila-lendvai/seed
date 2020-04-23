@@ -1,21 +1,27 @@
-(in-package :seed)
+(in-package :seed/eval)
+
+;;;
+;;; concepts:
+;;;   - IR (intermediate representation) is a language that can be eval'd directly in common lisp.
+;;;     This greatly helps debugging. This IR can then be compiled into native assembly of your choice.
+;;;
 
 (deftype cell-type () 'fixnum)
 (deftype cell-vector () '(vector cell-type))
 
 (defstruct (workspace
              (:conc-name wp/)
-             (:predicate nil)
-             (:copier nil)
              (:constructor %make-workspace))
   (data nil :type cell-vector)
   (current-index 0 :type integer))
 
-(defstruct (env
-             (:conc-name env/)
-             (:predicate nil)
-             (:copier nil)
-             (:constructor %make-env))
+(defun make-workspace (size)
+  (%make-workspace :data (make-array size :element-type 'cell-type :initial-element 0)
+                   :current-index 0))
+
+(defstruct (runtime-env
+             (:conc-name runtime-env/)
+             (:constructor %make-runtime-env))
   (stack nil :type workspace)
   (words nil :type hash-table) ;; string -> instruction-list
   ;(workspaces nil :type workspace)
@@ -23,19 +29,14 @@
   ;(%word-blobs nil :type cell-vector)
   )
 
-(defun make-workspace (size &key (initial-contents nil initial-contents?))
-  (%make-workspace :data (apply 'make-array size
-                                :element-type 'cell-type
-                                (if initial-contents?
-                                    `(:initial-contents ,initial-contents)
-                                    '(:initial-element 0)))
-                   :current-index (if initial-contents?
-                                      (length initial-contents)
-                                      0)))
+(defun make-runtime-env ()
+  (%make-runtime-env :stack (make-workspace 20)
+                     :words (make-hash-table :test 'equal)))
 
-(defun make-env ()
-  (%make-env :stack (make-workspace 20)
-             :words (make-hash-table :test 'equal)))
+(defstruct (compiler
+             (:conc-name compiler/))
+  ;; an alist of encountered definitions
+  (definitions nil :type list))
 
 (defun wp/push (val w)
   (setf (aref (wp/data w) (wp/current-index w)) val)
@@ -74,7 +75,7 @@
   (check-type x symbol)
   (string-downcase (symbol-name x)))
 
-(defun seed/compile (prg)
+(defun seed/compile-to-ir (prg)
   (let ((stack (list)))
     (labels
         ((emit (i)
@@ -89,7 +90,7 @@
                   ;; some special forms
                   (define (let ((name (first args))
                                 (body (rest args)))
-                            (emit `(i/define ,(mangle-word-name name) ,@(seed/compile body)))))
+                            (emit `(i/define ,(mangle-word-name name) ,@(seed/compile-to-ir body)))))
                   (otherwise (dolist (arg args)
                                (recurse arg))
                              (recurse op)))))
@@ -106,16 +107,16 @@
 (defun seed/eval/fn (prg env)
   (cl:eval
    `(let ((-env- ,env)
-          (-stack- ,(env/stack env))
-          (-words- ,(env/words env)))
+          (-stack- ,(runtime-env/stack env))
+          (-words- ,(runtime-env/words env)))
       (declare (ignorable -env- -stack- -words-))
       ,@prg))
   env)
 
 (defmacro seed/eval* (&body prg)
-  `(let* ((-env- (make-env))
-          (-stack- (env/stack -env-))
-          (-words- (env/words -env-)))
+  `(let* ((-env- (make-runtime-env))
+          (-stack- (runtime-env/stack -env-))
+          (-words- (runtime-env/words -env-)))
      (declare (ignorable -env- -stack- -words-))
-     ,@(seed/compile prg)
+     ,@(seed/compile-to-ir prg)
      (values (wp/pop -stack-) -env-)))

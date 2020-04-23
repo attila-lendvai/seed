@@ -9,3 +9,6 @@
            )
        (progn ;with-new-maru-state
          ,@body))))
+
+(defmacro eval (&body body)
+  `(seed/eval* ,@body))

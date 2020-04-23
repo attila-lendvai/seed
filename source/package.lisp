@@ -1,6 +1,6 @@
 (in-package :cl-user)
 
-(defpackage :seed
+(defpackage :seed/eval
   (:use :common-lisp
         :alexandria
         :anaphora
@@ -10,3 +10,7 @@
    #:eval
    )
   (:documentation "Package for the eval implementation."))
+
+(defpackage :seed
+  (:use)
+  (:documentation "Empty package that will be used when READ'ing seed files."))

@@ -1,4 +1,4 @@
-(in-package :seed)
+(in-package :seed/eval)
 
 ;; minimalistic hu.dwim.logger API emulation
 (macrolet

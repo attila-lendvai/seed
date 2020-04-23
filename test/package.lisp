@@ -7,7 +7,8 @@
         :hu.dwim.logger
         :hu.dwim.stefil)
   (:shadow
-   #:deftest))
+   #:deftest
+   #:eval))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; from hu.dwim.common
@@ -31,4 +32,4 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; from hu.dwim.common
-  (import-all-owned-symbols :seed :seed/test :overwrite t))
+  (import-all-owned-symbols :seed/eval :seed/test :overwrite t))
