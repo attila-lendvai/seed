@@ -5,10 +5,17 @@
 (in-suite test/eval)
 
 (deftest test/eval/1 ()
-  (is (= 42
-         (eval
-          (define bar
-            (+ 2))
-          (define foo
-            (bar (+ 20)))
-          (foo (+ (* 2 5) 10))))))
+  (is (eql 42 (eval
+                (define bar
+                  (+ 2))
+                (define foo
+                  (bar (+ 20)))
+                (foo (+ (* 2 5) 10))))))
+
+(deftest test/eval/2 ()
+  (is (eql 42 (eval
+                (define bar
+                  (foo 2))
+                (define foo
+                  (+ 20))
+                (+ (bar) 20)))))
