@@ -70,3 +70,6 @@
                           ,@body)))))
                ;; primary PRINT-OBJECT methods are supposed to return the object
                -self-))))))
+
+(defun system-relative-pathname (path)
+  (asdf:system-relative-pathname :seed path))

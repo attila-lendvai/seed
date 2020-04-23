@@ -6,7 +6,8 @@
                 :components ((:file "package")
                              (:file "utils" :depends-on ("package"))
                              (:file "logger-stubs" :depends-on ("utils"))
-                             (:file "eval" :depends-on ("utils" "logger-stubs" "package"))))))
+                             (:file "eval" :depends-on ("utils" "logger-stubs" "package"))
+                             (:file "emit-ia32" :depends-on ("eval" "utils" "logger-stubs" "package"))))))
 
 (defsystem :seed/test
   :defsystem-depends-on (:hu.dwim.asdf)
