@@ -8,6 +8,9 @@
   (:shadow
    ;; shadow some stuff to avoid confusion
    #:eval
+   #:compile
+   #:read
+   #:read-from-string
    )
   (:documentation "Package for the eval implementation."))
 

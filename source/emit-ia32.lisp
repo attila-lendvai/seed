@@ -106,25 +106,3 @@
              (emit-comment "end toplevel")))
         (emit-definitions)
         (emit-toplevel)))))
-
-(defun test ()
-  (let* ((c (seed/eval::make-compiler))
-         (asm (seed/ia32::compile-to-ia32
-               (seed/eval::compile-to-ir
-                (seed/eval::seed/reintern-symbols
-                 '((define-static bar
-                    (+ 2))
-                   (define-static foo
-                    (bar (+ 19)))
-                   (foo (+ (* 2 5) 11))))
-                c)
-               c)))
-    (with-standard-io-syntax
-      (with-output-to-file (output (seed/eval::system-relative-pathname "test.s") :if-exists :supersede)
-        (write-string asm output)))
-    (print asm)
-    (multiple-value-bind (output error-output error-code)
-        (uiop:run-program '("gcc" "-m32" "test.s") :directory (seed/eval::system-relative-pathname "") :output 'string :error-output 'string :ignore-error-status t)
-      (if (eql 0 error-code)
-          (uiop:run-program '("./a.out") :directory (seed/eval::system-relative-pathname ""))
-          (format t "*** failed:~%~S~%~S~%" output error-output)))))

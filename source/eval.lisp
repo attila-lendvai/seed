@@ -95,7 +95,7 @@
               (let ((*package* (find-package :seed))
                     (*read-eval* nil))
                 (loop :with form
-                      :while (not (eq 'eof (setf form (read input nil 'eof))))
+                      :while (not (eq 'eof (setf form (cl:read input nil 'eof))))
                       :collect form))))))
 
 (defun seed/read-and-eval (input)
@@ -133,8 +133,7 @@
 
 (defmacro seed-ir::define (word &body body)
   `(setf (gethash ',word -words-)
-         (named-lambda ,(symbolicate '#:%stub- word) ()
-           ,@body)))
+         ',body))
 
 (defun %ir-call (word -stack- -words- -env-)
   (case word
@@ -205,6 +204,12 @@
              (cell-type
               (emit `(seed-ir::push ,form)))
              (symbol
-              (emit `(seed-ir::call ,form))))))
+              (emit
+               (case form
+                 (seed::+ '(seed-ir::call seed-ir::+))
+                 (seed::- '(seed-ir::call seed-ir::-))
+                 (seed::* '(seed-ir::call seed-ir::*))
+                 (seed::/ '(seed-ir::call seed-ir::/))
+                 (otherwise `(seed-ir::call ,form))))))))
       (mapcar #'recurse prg))
     (reverse instructions)))

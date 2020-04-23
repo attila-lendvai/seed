@@ -17,4 +17,5 @@
   :components ((:module "test"
                 :components ((:file "package")
                              (:file "suite" :depends-on ("package"))
-                             (:file "eval" :depends-on ("suite"))))))
+                             (:file "eval" :depends-on ("suite"))
+                             (:file "ia32" :depends-on ("suite"))))))

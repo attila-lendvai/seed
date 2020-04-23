@@ -32,4 +32,5 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; from hu.dwim.common
+  (import-all-owned-symbols :seed/ia32 :seed/test :overwrite t)
   (import-all-owned-symbols :seed/eval :seed/test :overwrite t))
