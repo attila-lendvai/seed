@@ -4,11 +4,11 @@
 
 (in-suite test/ia32)
 
-(deftest read-and-compile-to-ia32-asm (form)
-  (let* ((c (seed/eval::make-compiler))
-         (asm (compile-to-ia32
-               (compile-to-ir
-                (seed/read form)
+(deftest read-and-compile-to/ia32/static (src)
+  (let* ((c (make-compiler))
+         (asm (compile-to/ia32/static
+               (compile-to/ir
+                (read-seed src)
                 c)
                c)))
     (print asm)
@@ -20,7 +20,7 @@
           (force-output asm-output))
        (multiple-value-bind (gcc-output gcc-error-output error-code)
            (uiop:run-program `("gcc" "-m32" "-o" ,(namestring exe-filename) ,(namestring asm-filename))
-                             :directory (seed/eval::system-relative-pathname "")
+                             :directory (system-relative-pathname "")
                              :output 'string
                              :error-output 'string
                              :ignore-error-status t)
@@ -29,7 +29,7 @@
              (format t "*** failed:~%~S~%~S~%" gcc-output gcc-error-output)))))))
 
 (deftest test/ia32/1 ()
-  (read-and-compile-to-ia32-asm
+  (read-and-compile-to/ia32/static
    "(define-static bar
       (+ 2))
     (define-static foo

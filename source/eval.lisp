@@ -1,4 +1,4 @@
-(in-package :seed/eval)
+(in-package :seed)
 
 ;;; design notes:
 ;;;   - this lisp code is written with assembly in mind, i.e. to be reasonable similar to
@@ -26,24 +26,11 @@
              (:conc-name runtime-env/)
              (:constructor %make-runtime-env))
   (stack nil :type workspace)
-  (words nil :type hash-table) ;; string -> instruction-list
-  ;(workspaces nil :type workspace)
-  ;; the integers stored in WORDS will point into WORD-BLOBS
-  ;(%word-blobs nil :type cell-vector)
-  )
+  (words nil :type hash-table))
 
 (defun make-runtime-env ()
-  (let ((env (%make-runtime-env :stack (make-workspace 20)
-                                :words (make-hash-table :test 'equal))))
-    #+nil ;; TODO delme
-    (flet ((boot (name body)
-             (define-word name body env)))
-      (dolist (e '((seed::+ (wp/push (+ (wp/pop -stack-) (wp/pop -stack-)) -stack-))
-                   (seed::- (wp/push (- (wp/pop -stack-) (wp/pop -stack-)) -stack-))
-                   (seed::* (wp/push (* (wp/pop -stack-) (wp/pop -stack-)) -stack-))
-                   (seed::/ (wp/push (round (/ (wp/pop -stack-) (wp/pop -stack-))) -stack-))))
-        (apply #'boot e)))
-    env))
+  (%make-runtime-env :stack (make-workspace 20)
+                     :words (make-hash-table :test 'equal)))
 
 (defstruct (compiler
              (:conc-name compiler/))
@@ -71,7 +58,7 @@
           (-stack- (runtime-env/stack -env-))
           (-words- (runtime-env/words -env-)))
      (declare (ignorable -env- -stack- -words-))
-     ,@(compile-to-ir (seed/reintern-symbols prg) (make-compiler))
+     ,@(compile-to/ir (seed/reintern-symbols prg) (make-compiler))
      (values (wp/pop -stack-) -env-)))
 
 (defun seed/reintern-symbols (prg)
@@ -83,25 +70,25 @@
             (cons (recurse (car e))
                   (recurse (cdr e))))
            (symbol
-            (intern (symbol-name e) (find-package :seed)))
+            (intern (symbol-name e) (find-package :seed/src)))
            (t e))))
     (recurse prg)))
 
-(defun seed/read (input)
+(defun read-seed (input)
   (etypecase input
     (string (with-input-from-string (stream input)
-              (seed/read stream)))
+              (read-seed stream)))
     (stream (with-standard-io-syntax
-              (let ((*package* (find-package :seed))
+              (let ((*package* (find-package :seed/src))
                     (*read-eval* nil))
                 (loop :with form
                       :while (not (eq 'eof (setf form (cl:read input nil 'eof))))
                       :collect form))))))
 
-(defun seed/read-and-eval (input)
-  (let* ((prg (seed/read input))
+(defun read-seed-and-eval (input)
+  (let* ((prg (read-seed input))
          (c (make-compiler))
-         (ir (compile-to-ir prg c))
+         (ir (compile-to/ir prg c))
          (runtime (make-runtime-env)))
     (seed/eval/fn ir runtime)
     (wp/pop (runtime-env/stack runtime))))
@@ -117,36 +104,30 @@
     (setf (aref (wp/data w) (wp/current-index w)) 0) ; TODO
     val))
 
-(defmacro seed-ir::push (arg)
+(defmacro seed/ir:push (arg)
   `(wp/push ,arg -stack-))
-
-#+nil
-(defmacro seed-ir::drop ()
-  `(progn
-     (wp/pop -stack-)
-     (values)))
 
 (defun define-word (name body env)
   (check-type name (and symbol (not null)))
   (setf (gethash name (runtime-env/words env))
         body))
 
-(defmacro seed-ir::define (word &body body)
+(defmacro seed/ir:define (word &body body)
   `(setf (gethash ',word -words-)
          ',body))
 
 (defun %ir-call (word -stack- -words- -env-)
   (case word
     ;; special forms
-    (seed-ir::+ (wp/push (+ (wp/pop -stack-) (wp/pop -stack-)) -stack-))
-    (seed-ir::- (wp/push (- (wp/pop -stack-) (wp/pop -stack-)) -stack-))
-    (seed-ir::* (wp/push (* (wp/pop -stack-) (wp/pop -stack-)) -stack-))
-    (seed-ir::/ (wp/push (round (/ (wp/pop -stack-) (wp/pop -stack-))) -stack-))
+    (seed/ir:+ (wp/push (+ (wp/pop -stack-) (wp/pop -stack-)) -stack-))
+    (seed/ir:- (wp/push (- (wp/pop -stack-) (wp/pop -stack-)) -stack-))
+    (seed/ir:* (wp/push (* (wp/pop -stack-) (wp/pop -stack-)) -stack-))
+    (seed/ir:/ (wp/push (round (/ (wp/pop -stack-) (wp/pop -stack-))) -stack-))
     (otherwise
      (let ((prg (gethash word -words-)))
        (seed/eval/fn prg -env-)))))
 
-(defmacro seed-ir::call (word)
+(defmacro seed/ir:call (word)
   `(%ir-call ',word -stack- -words- -env-))
 
 (defun compiler/allocate-word-id (c)
@@ -175,7 +156,7 @@
   (check-type name (and symbol (not null)))
   (assoc name (compiler/env c)))
 
-(defun compile-to-ir (prg c)
+(defun compile-to/ir (prg c)
   (let ((instructions (list)))
     (labels
         ((emit (i)
@@ -188,28 +169,28 @@
                      (args (rest form)))
                 (case op
                   ;; some special forms
-                  ((seed::define seed::define-static)
+                  ((seed/src::define seed/src::define-static)
                    (let* ((name (first args))
                           (body (rest args))
-                          (static? (eq op 'seed::define-static)))
+                          (static? (eq op 'seed/src::define-static)))
                      (compiler/extend-env c name body static? :form form)
-                     (let ((compiled-body (compile-to-ir body c)))
+                     (let ((compiled-body (compile-to/ir body c)))
                        (setf (car body) (car compiled-body))
                        (setf (cdr body) (cdr compiled-body)))
                      (unless static?
-                       (emit `(seed-ir::define ,name ,@(compile-to-ir body c))))))
+                       (emit `(seed/ir:define ,name ,@(compile-to/ir body c))))))
                   (otherwise (dolist (arg args)
                                (recurse arg))
                              (recurse op)))))
              (cell-type
-              (emit `(seed-ir::push ,form)))
+              (emit `(seed/ir:push ,form)))
              (symbol
               (emit
                (case form
-                 (seed::+ '(seed-ir::call seed-ir::+))
-                 (seed::- '(seed-ir::call seed-ir::-))
-                 (seed::* '(seed-ir::call seed-ir::*))
-                 (seed::/ '(seed-ir::call seed-ir::/))
-                 (otherwise `(seed-ir::call ,form))))))))
+                 (seed/src::+ '(seed/ir:call seed/ir:+))
+                 (seed/src::- '(seed/ir:call seed/ir:-))
+                 (seed/src::* '(seed/ir:call seed/ir:*))
+                 (seed/src::/ '(seed/ir:call seed/ir:/))
+                 (otherwise   `(seed/ir:call ,form))))))))
       (mapcar #'recurse prg))
     (reverse instructions)))

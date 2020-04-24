@@ -11,7 +11,7 @@
          ,@body))))
 
 (defmacro eval (&body body)
-  `(seed/eval* ,@body))
+  `(seed::seed/eval* ,@body))
 
 (defun read-and-eval (prg)
-  (seed/read-and-eval prg))
+  (seed::read-seed-and-eval prg))
