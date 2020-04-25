@@ -25,10 +25,14 @@
 ")
 
 (defun mangle-ir-name (x)
-  (check-type x string)
-  (setf x (substitute #\_ #\/ x))
-  (setf x (substitute #\_ #\- x))
-  (concatenate 'string "L_" x))
+  (etypecase x
+    (cons
+     (assert (eq (first x) 'seed/ir:extern))
+     (second x))
+    (string
+     (setf x (substitute #\_ #\/ x))
+     (setf x (substitute #\_ #\- x))
+     (concatenate 'string "L_" x))))
 
 (defun compile-to/ia32/static (ir &rest args &key (stream 'string) (memory-size 10) verbose &allow-other-keys)
   (declare (ignore memory-size verbose))

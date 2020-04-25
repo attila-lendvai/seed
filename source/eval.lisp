@@ -127,13 +127,17 @@
   (source-form nil)
   (input-arguments nil)
   (output-arguments nil)
-  (ir-primitive nil))
+  (ir-primitive nil)
+  (extern nil))
 
 (defvar *compile/verbose* nil)
 
 (defparameter *seed-bootstrap-definitions*
-  '((seed/src::|define| seed/src::+ (2 1) (seed/src::|primitive| seed/ir:+))
-    (seed/src::|define| seed/src::* (2 1) (seed/src::|primitive| seed/ir:*))))
+  (read-seed
+   "
+ (define + (2 1)           (primitive SEED/IR:+))
+ (define * (2 1)           (primitive SEED/IR:*))
+"))
 
 (defvar *ir-definitions*)
 
@@ -160,7 +164,8 @@
                (concatenate 'string name-prefix "/" (symbol-name name))
                (symbol-name name)))
          (compile-define (form)
-           (let ((ir-primitive nil))
+           (let ((ir-primitive nil)
+                 (extern-name nil))
              (destructuring-bind (name arg-spec &rest body) (rest form)
                (assert (and name (symbolp name)))
                (destructuring-bind (&optional input-args output-args) arg-spec
@@ -177,14 +182,16 @@
                         (seed/error "invalid primitive declaration ~S" form))
                       (setf ir-primitive (second (first body))))
                      (seed/src::|extern|
-                      (error "not-yet, TODO"))))
+                      (setf extern-name (symbol-name (second (first body)))))))
                  (let ((nested-name (nested-name name)))
                    (extend-env name (make-compiler/env-entry :name nested-name
                                                              :input-arguments input-args
                                                              :output-arguments output-args
                                                              :source-form form
-                                                             :ir-primitive ir-primitive))
-                   (unless ir-primitive
+                                                             :ir-primitive ir-primitive
+                                                             :extern extern-name))
+                   (unless (or ir-primitive
+                               extern-name)
                      (push `(seed/ir:define ,nested-name (,input-args ,output-args)
                                             ,@(%compile/seed-to-ir body c nested-name env))
                            *ir-definitions*)))))))
@@ -205,10 +212,14 @@
                      (recurse arg))
                    (let* ((target-definition (or (lookup-env op)
                                                  (seed/error "unknown word ~S, in form ~S" op form)))
-                          (target-name (or (compiler/env/ir-primitive target-definition)
+                          (primitive (compiler/env/ir-primitive target-definition))
+                          (target-name (or primitive
                                            (compiler/env/name target-definition))))
-                     (assert target-name)
-                     (emit `(seed/ir:call ,target-name)))))))
+                     (aif (compiler/env/extern target-definition)
+                          (emit `(seed/ir:call (seed/ir:extern ,it)))
+                          (progn
+                            (assert target-name)
+                            (emit `(seed/ir:call ,target-name)))))))))
              (cell-value
               (emit `(seed/ir:push/stack ,form))))))
       (map nil #'recurse prg))

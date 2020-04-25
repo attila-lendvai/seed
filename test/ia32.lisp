@@ -44,3 +44,8 @@
     (define foo (1 1)
       (bar (+ 19)))
     (foo (+ (* 2 5) 11))"))
+
+(deftest test/ia32/extern ()
+  (read-and-compile-to/ia32/static
+   "(define bar (1 0) (extern printf))
+    (bar (+ (* 2 5) 32))"))
