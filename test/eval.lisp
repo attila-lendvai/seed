@@ -6,16 +6,16 @@
 
 (deftest test/eval/1 ()
   (is (eql 42 (read-and-eval
-                "(define bar
+                "(define bar ()
                    (+ 2))
-                 (define foo
-                   (bar (+ 20)))
-                 (foo (+ (* 2 5) 10))"))))
+                 (define foo ()
+                   (bar (+ 21)))
+                 (foo (+ (* 2 5) 9))"))))
 
 (deftest test/eval/2 ()
   (is (eql 42 (read-and-eval
-                "(define bar
-                   (foo 2))
-                 (define foo
+                "(define foo ()
                    (+ 20))
+                 (define bar ()
+                   (foo 2))
                  (+ (bar) 20)"))))

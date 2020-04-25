@@ -5,17 +5,40 @@
 ;;; concepts:
 ;;;
 
-(defun mangle-word-name (x)
-  (assert (and (symbolp x) (member (package-name (symbol-package x)) '#.(mapcar #'symbol-name '(seed/src seed/ir)) :test 'equal)))
-  (concatenate 'string "L_" (string-downcase (symbol-name x))))
+(defparameter *ia32-prologue*
+"
+	.macro M_rot2
+	movl	(%esp),	%eax
+	movl	4(%esp),%ebx
+	movl	%ebx,	(%esp)
+	movl	%eax,	4(%esp)
+	.endm
 
-(defun compile-to/ia32/static (prg c &key output)
-  (if output
-      (%compile-to/ia32/static prg c output)
+	.macro M_rot3
+	movl	(%esp),	%eax
+	movl	4(%esp),%ebx
+	movl	%ebx,	(%esp)
+	movl	8(%esp),%ebx
+	movl	%ebx,	4(%esp)
+	movl	%eax,	8(%esp)
+	.endm
+")
+
+(defun mangle-ir-name (x)
+  (check-type x string)
+  (setf x (substitute #\_ #\/ x))
+  (setf x (substitute #\_ #\- x))
+  (concatenate 'string "L_" x))
+
+(defun compile-to/ia32/static (ir &rest args &key (stream 'string) (memory-size 10) verbose &allow-other-keys)
+  (declare (ignore memory-size verbose))
+  (if (or (eq stream 'string)
+          (null stream))
       (with-output-to-string (stream)
-        (compile-to/ia32/static prg c :output stream))))
+        (apply 'compile-to/ia32/static ir :stream stream args))
+      (apply '%compile-to/ia32/static ir args)))
 
-(defun %compile-to/ia32/static (prg c stream &key (stack-size 10))
+(defun %compile-to/ia32/static (ir &key (stream *standard-output*) (memory-size 10) verbose (safety 0))
   (with-standard-io-syntax
     (let ()
       (labels
@@ -26,80 +49,95 @@
            (emit-comment (&rest comment)
              (write-string "## " stream)
              (apply #'emit comment))
-           (emit-push (value)
+           (emit-label (name)
+             (emit name ":"))
+           (literal (value)
+             (concatenate 'string "$" (princ-to-string value)))
+           (emit-push/stack (value)
+             (emit "	pushl	" value))
+           (emit-pop/stack (target)
+             (emit "	pop	" target))
+           #+nil
+           (emit-push/wp (value)
              (emit "	subl	$4, %ebp")
              (emit "	movl	" value ", (%ebp)"))
-           (emit-push/literal (value)
-             (emit-push (concatenate 'string "$" (princ-to-string value))))
-           (emit-pop (target)
+           #+nil
+           (emit-pop/wp (target)
              (emit "	movl	(%ebp)," target)
              (emit "	addl	$4, %ebp"))
-           #+nil
-           (emit-rot ()
-             (emit "	movl	(%esp), %eax")
-             (emit "	movl	4(%esp), %ebx")
-             (emit "	movl	%ebx, (%esp)")
-             (emit "	movl	8(%esp), %ebx")
-             (emit "	movl	%ebx, 4(%esp)")
-             (emit "	movl	%eax, 8(%esp)"))
-           #+nil
-           (emit-swap ()
-             (emit "	movl	(%esp), %eax")
-             (emit "	movl	4(%esp), %ebx")
-             (emit "	movl	%ebx, (%esp)")
-             (emit "	movl	%eax, 4(%esp)"))
+           (emit-rot (n)
+             (ecase n
+               (2
+                (emit "	M_rot2"))
+               (3
+                (emit "	M_rot3"))))
            (emit-program (prg)
              (dolist (form prg)
+               (when verbose
+                 (emit-comment "form: " form))
                (ecase (first form)
-                 (seed/ir:push
-                  (emit-push/literal (second form))
-                  ;;(emit "	push	$" (second form))
-                  )
+                 (seed/ir:push/stack
+                  (emit-push/stack (literal (second form))))
                  (seed/ir:call
                   (case (second form)
                     ;; handle the special forms
                     (seed/ir:+
-                     (emit-pop "%eax")
-                     ;;(emit "	pop	%eax")
-                     (emit "	addl	%eax, (%ebp)")
+                     (emit-pop/stack "%eax")
+                     (emit "	addl	%eax, (%esp)")
                      )
                     (seed/ir:*
-                     (emit-pop "%eax")
-                     ;;(emit "	pop	%eax")
-                     (emit "	mull	(%ebp)")
-                     (emit "	movl	%eax, (%ebp)"))
+                     (emit-pop/stack "%eax")
+                     (emit "	mull	(%esp)")
+                     (emit "	movl	%eax, (%esp)"))
                     (otherwise
-                     (let* ((name (second form))
-                            (env-entry (seed::compiler/lookup-env c name)))
-                       (if env-entry
-                           (emit "	call	" (mangle-word-name name))
-                           (seed/error "unknown definition called in IR form ~S" form))))))
-                 ;;(seed/ir:define (not-yet-implemented))
-                 )))
-           (emit-definitions ()
+                     (let ((name (second form)))
+                       (emit "	call	" (mangle-ir-name name)))))))))
+           (emit-definitions (defs)
              (emit-comment "begin definitions")
-             (dolist (env-entry (reverse (seed::compiler/env c)))
-               (emit-comment "def: " (princ-to-string env-entry))
-               (destructuring-bind (name body &key &allow-other-keys) env-entry
+             (dolist (form defs)
+               (emit-comment "def: " form)
+               (destructuring-bind (name (in-args out-args) &rest body) (rest form)
                  (emit "	.text")
-                 (emit (mangle-word-name name) ":")
-                 ;;(emit-rot)
+                 (emit (mangle-ir-name name) ":")
+                 (unless (zerop in-args)
+                   (emit-rot (1+ in-args)))
                  (emit-program body)
-                 ;;(emit-swap)
+                 (unless (zerop out-args)
+                   (emit-rot (1+ out-args)))
                  (emit "	ret")))
              (emit-comment "end definitions"))
-           (emit-toplevel ()
+           (emit-toplevel (tlfs)
+             (unless (zerop safety)
+               (emit "	.data")
+               (emit-label "memory_top")
+               (emit "	.long 0")
+               (emit-label "memory_bottom")
+               (emit "	.long 0"))
+             (emit "	.text")
              (emit-comment "begin toplevel")
              (emit "	.globl main")
-             (emit "	.text")
-             (emit "main:")
-             (let ((stack-size-in-bytes (* stack-size 4)))
+             (emit-label "main")
+             (let ((memory-size-in-bytes (* memory-size 4)))
+               ;; %esp is stack, %ebp is workspace
                (emit "	movl	%esp, %ebp")
-               (emit "	subl	$" stack-size-in-bytes ", %esp")
-               (emit-program prg)
-               (emit "	addl	$" stack-size-in-bytes ", %esp"))
-             (emit-pop "%eax")
+               (emit "	subl	" (literal memory-size-in-bytes) ", %ebp")
+               (unless (zerop safety)
+                 (emit "	movl	%esp, memory_top")
+                 (emit "	movl	%ebp, memory_bottom"))
+               (emit-program tlfs))
+             (emit-pop/stack "%eax")
              (emit "	ret")
              (emit-comment "end toplevel")))
-        (emit-definitions)
-        (emit-toplevel)))))
+        (let* ((defs ())
+               (tlfs (remove nil (mapcar (lambda (def)
+                                           (if (and (consp def)
+                                                    (eq (car def) 'seed/ir::define))
+                                               (progn
+                                                 (push def defs)
+                                                 nil)
+                                               def))
+                                         ir))))
+          (setf defs (nreverse defs))
+          (emit *ia32-prologue*)
+          (emit-definitions defs)
+          (emit-toplevel tlfs))))))

@@ -34,7 +34,8 @@
   (:use)
   (:export
    #:define
-   #:push
+   #:push/wp
+   #:push/stack
    #:call
    #:+
    #:-
